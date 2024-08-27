@@ -88,9 +88,9 @@ def motion_token_to_string(motion_token, lengths, codebook_size=512):
     return motion_string
 
 
-def render_motion(data, feats, method='fast'):
+def render_motion(data, feats, method='fast', outname=None):
     fname = time.strftime("%Y-%m-%d-%H_%M_%S", time.localtime(
-        time.time())) + str(np.random.randint(10000, 99999))
+        time.time())) + (str(np.random.randint(10000, 99999)) if not outname else '_'+outname.replace('.npy', ''))
     video_fname = fname + '.mp4'
     feats_fname = fname + '.npy'
     output_npy_path = os.path.join(output_dir, feats_fname)
@@ -146,11 +146,12 @@ def render_motion(data, feats, method='fast'):
 
 def load_motion(motion_uploaded, method):
     file = motion_uploaded['file']
+    filename = Path(file)
 
     feats = torch.tensor(np.load(file), device=model.device)
     if len(feats.shape) == 2:
         feats = feats[None]
-    # feats = model.datamodule.normalize(feats)
+    feats = model.datamodule.normalize(feats)
 
     # Motion tokens
     motion_lengths = feats.shape[0]
@@ -164,7 +165,7 @@ def load_motion(motion_uploaded, method):
     joints = model.datamodule.feats2joints(feats.cpu()).cpu().numpy()
     output_mp4_path, video_fname, output_npy_path, joints_fname = render_motion(
         joints,
-        feats.to('cpu').numpy(), method)
+        feats.to('cpu').numpy(), method, outname=filename.name)
 
     motion_uploaded.update({
         "feats": feats,
@@ -513,7 +514,7 @@ with gr.Blocks(css=customCSS) as demo:
                     container=False)
 
             with gr.Row():
-                aud = gr.Audio(source="microphone",
+                aud = gr.Audio("microphone",
                                label="Speak input",
                                type='filepath')
                 btn = gr.UploadButton("📁 Upload motion",
@@ -551,6 +552,7 @@ with gr.Blocks(css=customCSS) as demo:
         [chatbot, txt, motion_uploaded, data_stored],
         queue=False).then(bot, [chatbot, motion_uploaded, data_stored, method],
                           [chatbot, motion_uploaded, data_stored])
+    print(txt_msg)
 
     txt_msg.then(lambda: gr.update(interactive=True), None, [txt], queue=False)
 
