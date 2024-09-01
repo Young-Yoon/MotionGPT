@@ -90,7 +90,7 @@ def motion_token_to_string(motion_token, lengths, codebook_size=512):
 
 def render_motion(data, feats, method='fast', outname=None):
     fname = time.strftime("%Y-%m-%d-%H_%M_%S", time.localtime(
-        time.time())) + (str(np.random.randint(10000, 99999)) if not outname else '_'+outname.replace('.npy', ''))
+        time.time())) + (str(np.random.randint(10000, 99999)) if not outname else '@@'+outname.replace('.npy', ''))
     video_fname = fname + '.mp4'
     feats_fname = fname + '.npy'
     output_npy_path = os.path.join(output_dir, feats_fname)
@@ -184,6 +184,8 @@ def load_motion(motion_uploaded, method):
 
 
 def add_text(history, text, motion_uploaded, data_stored, method):
+    if text.strip() == '<Motion_Placeholder>' and 'file' in motion_uploaded.keys():
+        text = "Please explain the movement shown in <Motion_Placeholder> using natural language."
     data_stored = data_stored + [{'user_input': text}]
 
     text = f"""<h3>{text}</h3>"""
@@ -252,9 +254,28 @@ def bot(history, motion_uploaded, data_stored, method):
     out_lengths = outputs["length"][0]
     out_joints = outputs["joints"][:out_lengths].detach().cpu().numpy()
     out_texts = outputs["texts"][0]
+    # text description for motion
+    txt_fname = Path(motion_uploaded['motion_video']).with_suffix('.txt')
+    input_fname = None
+    if '@@' in txt_fname.name:
+        input_fname = Path(txt_fname.name).stem.split('@@')[-1]
+        input_path = Path('/Users/ylee/data/mdm_dataset')
+        if input_fname.isdigit() or (input_fname.startswith('M') and input_fname[1:].isdigit()):
+            input_txtfile = input_path / 'HumanML3D' / 'texts'
+            in_texts = ''
+        else:
+            input_txtfile = input_path / 'MixamoSMPLMaleHumanML' / 'test' / 'texts'
+            in_texts = f'{input_fname} -> '
+        input_txtfile /= (input_fname + '.txt')
+        with open(input_txtfile, 'r') as f:
+            in_texts += f.readlines()[0].split('#')[0]
+
+        with open(txt_fname, 'w') as f:
+            f.write(f"{in_texts}\n{out_texts}")
+
     output_mp4_path, video_fname, output_npy_path, joints_fname = render_motion(
         out_joints,
-        out_feats.to('cpu').numpy(), method)
+        out_feats.to('cpu').numpy(), method, outname=input_fname)
 
     motion_uploaded = {
         "feats": None,
@@ -552,7 +573,6 @@ with gr.Blocks(css=customCSS) as demo:
         [chatbot, txt, motion_uploaded, data_stored],
         queue=False).then(bot, [chatbot, motion_uploaded, data_stored, method],
                           [chatbot, motion_uploaded, data_stored])
-    print(txt_msg)
 
     txt_msg.then(lambda: gr.update(interactive=True), None, [txt], queue=False)
 
