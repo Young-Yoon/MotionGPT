@@ -99,7 +99,7 @@ class MotionGPT(BaseModel):
                     torch.cat((batch["motion"][i], outputs[i])))
             elif task in ["t2m", "m2t", "inbetween"]:
                 motion = self.vae.decode(outputs[i])
-                # motion = self.datamodule.denormalize(motion)
+                motion = self.datamodule.denormalize(motion)
                 lengths.append(motion.shape[1])
             else:
                 raise NotImplementedError
